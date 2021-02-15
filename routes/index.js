@@ -3,19 +3,26 @@ const axios = require('axios');
 
 const env = require('../env');
 
+const router = express.Router();
+
 const apiKey = "457ff21fab600bdc0161dd1ea135943d";
 const userToken = "260c5623602921c5d6999e70c3a4874e7616012a5b1b86a76f3652eb386f917e";
-const router = express.Router();
 const myId = "5fb78a0e4d5b225efd617756";
 
 // Start writing your integration here
 
 router.get('/board',async(req,res)=>{
   const {boardName} = req.query;
-  const {data:boards} = await axios.get(`https://api.trello.com/1/members/me/boards?key=${apiKey}&token=${userToken}`);
-  const {data:user} = await axios.get(`https://api.trello.com/1/members/me?key=${apiKey}&token=${userToken}`);
-  console.log(user.id);
+
   
+  const [boardsData,userData] = await Promise.all(
+    [
+      axios.get(`https://api.trello.com/1/members/me/boards?key=${apiKey}&token=${userToken}`),
+      axios.get(`https://api.trello.com/1/members/me?key=${apiKey}&token=${userToken}`)
+    ]);
+
+  const boards = boardsData.data;
+  const user = userData.data;
   let obj = {};
   let activeCards = 0;
   let openCards = 0;
@@ -29,15 +36,45 @@ router.get('/board',async(req,res)=>{
   res.json(obj);
 })
 
+
+
 router.get('/boards', async (req, res) => {
+  const [boardsData,userData] = await Promise.all(
+      [
+        axios.get(`https://api.trello.com/1/members/me/boards?key=${apiKey}&token=${userToken}`),
+        axios.get(`https://api.trello.com/1/members/me?key=${apiKey}&token=${userToken}`)
+      ]);
+
+  
+  const boards = boardsData.data;
+  const user = userData.data;
   let obj = {};
-  let ownedBoards = 0;
-  let participatingBoards = 0;
-  const {data:boards} = await axios.get(`https://api.trello.com/1/members/me/boards?key=${apiKey}&token=${userToken}`);
-  const array = [];
-  boards.map(b=> b.idMemberCreator == myId? ownedBoards++:participatingBoards++)
-  obj["ownedBoards"] = ownedBoards;
-  obj["participatingBoards"] = participatingBoards;
+  obj.ownedBoards = {quantity:0};
+  obj.participatingBoards = {quantity:0};
+  obj.ownedBoards.boards= [];
+  obj.participatingBoards.boards= [];
+  
+  for (let i = 0; i < boards.length; i++) {
+    const b = boards[i];
+    let cardsObj = {};
+    let activeCards = 0;
+    let openCards = 0;
+    let myCards = 0;
+    const {data:cards} = await axios.get(`https://api.trello.com/1/boards/${b.id}/cards?key=${apiKey}&token=${userToken}`);
+    cards.map(c=> c.idMembers.length >0 ? c.idMembers == user.id? myCards++ : activeCards++ : openCards++);
+    cardsObj["open"] = openCards;
+    cardsObj["active"] = activeCards;
+    cardsObj["mine"] = myCards;
+    if(b.idMemberCreator == myId){
+      obj.ownedBoards.quantity ++;
+      obj.ownedBoards.boards.push({name:b.name,cards:cardsObj})
+    }
+    else{
+      obj.participatingBoards.quantity ++;
+      obj.participatingBoards.boards.push({name:b.name,cards:cardsObj})
+    }
+  }
+  
   res.json(obj);
 })
 
